@@ -16,11 +16,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/destafajri/smart-routing/internal/config"
-	"github.com/destafajri/smart-routing/internal/model"
-	"github.com/destafajri/smart-routing/internal/provider"
-	"github.com/destafajri/smart-routing/internal/router"
-	"github.com/destafajri/smart-routing/internal/state"
+	"github.com/destafajri/airun/internal/config"
+	"github.com/destafajri/airun/internal/model"
+	"github.com/destafajri/airun/internal/provider"
+	"github.com/destafajri/airun/internal/router"
+	"github.com/destafajri/airun/internal/state"
 )
 
 const Version = "0.2.1"
@@ -354,7 +354,7 @@ func (a *App) interactive(ctx context.Context, configPath string) int {
 }
 
 func (a *App) printHelp() {
-	fmt.Fprint(a.Out, `airun - smart AI CLI routing and failover
+	fmt.Fprint(a.Out, `airun - AI CLI routing and failover
 
 Usage:
   airun                       Start interactive CLI

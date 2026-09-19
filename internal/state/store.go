@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/destafajri/smart-routing/internal/model"
+	"github.com/destafajri/airun/internal/model"
 )
 
 var unsafeTaskID = regexp.MustCompile("[^a-zA-Z0-9._-]+")

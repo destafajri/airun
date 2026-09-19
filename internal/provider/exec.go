@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/destafajri/smart-routing/internal/config"
-	"github.com/destafajri/smart-routing/internal/router"
+	"github.com/destafajri/airun/internal/config"
+	"github.com/destafajri/airun/internal/router"
 )
 
 type ExecRunner struct{}

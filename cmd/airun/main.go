@@ -6,7 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/destafajri/smart-routing/internal/cli"
+	"github.com/destafajri/airun/internal/cli"
 )
 
 func main() {
