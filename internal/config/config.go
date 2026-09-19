@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -68,17 +69,25 @@ func Load(path string) (Config, error) {
 func migrateLegacyProviderDefaults(c *Config) {
 	for i := range c.Providers {
 		p := &c.Providers[i]
-		if strings.TrimSpace(p.Name) != "codex" || strings.TrimSpace(p.Command) != "codex" {
-			continue
-		}
-		promptMode := strings.TrimSpace(p.PromptMode)
-		if promptMode != "" && promptMode != "arg" {
-			continue
-		}
-		if len(p.Args) == 2 && p.Args[0] == "exec" && p.Args[1] == "{{prompt}}" {
+		if isHistoricalGeneratedCodexProvider(*p) {
 			p.Args = []string{"exec", "--skip-git-repo-check", "{{prompt}}"}
 		}
 	}
+}
+
+func isHistoricalGeneratedCodexProvider(p ProviderConfig) bool {
+	return p.Name == "codex" &&
+		p.Priority == 20 &&
+		p.Command == "codex" &&
+		slices.Equal(p.Args, []string{"exec", "{{prompt}}"}) &&
+		p.PromptMode == "arg" &&
+		p.TimeoutSeconds == 1800 &&
+		p.MaxRetries == 1 &&
+		p.RetryBackoffMillis == 1500 &&
+		slices.Equal(p.HealthArgs, []string{"--version"}) &&
+		p.Env == nil &&
+		p.ErrorPatterns == nil &&
+		slices.Equal(p.FailoverOn, []string{"quota", "rate_limit", "timeout", "outage", "unavailable"})
 }
 
 func WriteDefault(path string, force bool) error {
