@@ -1,0 +1,12 @@
+# Build outputs
+airun
+airun.exe
+*.test
+
+# Local router state/config
+.airun/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
