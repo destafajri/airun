@@ -90,6 +90,13 @@ func saveWithReplace(path string, cfg Config, replace func(tempPath, targetPath 
 		return err
 	}
 
+	mode := os.FileMode(0o644)
+	if info, statErr := os.Stat(path); statErr == nil {
+		mode = info.Mode().Perm()
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return statErr
+	}
+
 	f, err := os.CreateTemp(dir, ".airun-config-*")
 	if err != nil {
 		return err
@@ -103,7 +110,7 @@ func saveWithReplace(path string, cfg Config, replace func(tempPath, targetPath 
 		_ = os.Remove(tempPath)
 	}()
 
-	if err := f.Chmod(0o644); err != nil {
+	if err := f.Chmod(mode); err != nil {
 		return err
 	}
 	if _, err := f.Write(append(b, '\n')); err != nil {
