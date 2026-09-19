@@ -1,0 +1,39 @@
+{
+  "state_dir": ".airun",
+  "poll_interval_seconds": 60,
+  "providers": [
+    {
+      "name": "claude",
+      "priority": 10,
+      "command": "claude",
+      "args": ["-p", "{{prompt}}"],
+      "prompt_mode": "arg",
+      "timeout_seconds": 1800,
+      "max_retries": 1,
+      "retry_backoff_millis": 1500,
+      "health_args": ["--version"]
+    },
+    {
+      "name": "codex",
+      "priority": 20,
+      "command": "codex",
+      "args": ["exec", "{{prompt}}"],
+      "prompt_mode": "arg",
+      "timeout_seconds": 1800,
+      "max_retries": 1,
+      "retry_backoff_millis": 1500,
+      "health_args": ["--version"]
+    },
+    {
+      "name": "gemini",
+      "priority": 30,
+      "command": "gemini",
+      "args": ["-p", "{{prompt}}"],
+      "prompt_mode": "arg",
+      "timeout_seconds": 1800,
+      "max_retries": 1,
+      "retry_backoff_millis": 1500,
+      "health_args": ["--version"]
+    }
+  ]
+}
