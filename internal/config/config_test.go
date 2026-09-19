@@ -81,7 +81,7 @@ func TestDefaultCodexSkipsGitRepoCheck(t *testing.T) {
 	}
 }
 
-func TestLoadMigratesLegacyDefaultCodexArgs(t *testing.T) {
+func TestLoadMigratesHistoricalGeneratedCodexProvider(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	legacy := `{
   "providers": [
@@ -90,7 +90,12 @@ func TestLoadMigratesLegacyDefaultCodexArgs(t *testing.T) {
       "priority": 20,
       "command": "codex",
       "args": ["exec", "{{prompt}}"],
-      "prompt_mode": "arg"
+      "prompt_mode": "arg",
+      "timeout_seconds": 1800,
+      "max_retries": 1,
+      "retry_backoff_millis": 1500,
+      "health_args": ["--version"],
+      "failover_on": ["quota", "rate_limit", "timeout", "outage", "unavailable"]
     }
   ]
 }`
@@ -105,6 +110,38 @@ func TestLoadMigratesLegacyDefaultCodexArgs(t *testing.T) {
 	want := []string{"exec", "--skip-git-repo-check", "{{prompt}}"}
 	if !reflect.DeepEqual(cfg.Providers[0].Args, want) {
 		t.Fatalf("migrated codex args = %v, want %v", cfg.Providers[0].Args, want)
+	}
+}
+
+func TestLoadPreservesCustomizedCodexWithLegacyArgs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	custom := `{
+  "providers": [
+    {
+      "name": "codex",
+      "priority": 5,
+      "command": "codex",
+      "args": ["exec", "{{prompt}}"],
+      "prompt_mode": "arg",
+      "timeout_seconds": 1800,
+      "max_retries": 1,
+      "retry_backoff_millis": 1500,
+      "health_args": ["--version"],
+      "failover_on": ["quota", "rate_limit", "timeout", "outage", "unavailable"]
+    }
+  ]
+}`
+	if err := os.WriteFile(path, []byte(custom), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"exec", "{{prompt}}"}
+	if !reflect.DeepEqual(cfg.Providers[0].Args, want) {
+		t.Fatalf("custom codex args = %v, want unchanged %v", cfg.Providers[0].Args, want)
 	}
 }
 
