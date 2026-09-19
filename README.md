@@ -1,6 +1,6 @@
 # Smart Routing (`airun`)
 
-`airun` is a local, deterministic AI CLI router. It runs a task through a configurable provider priority list and automatically fails over when a provider hits quota/rate limits, times out, is unavailable, has an outage, or returns another configured provider error.
+`airun` is a local, deterministic AI CLI router. It runs a task through a configurable provider priority list and automatically fails over for explicitly classified infrastructure failures such as quota/rate limits, timeouts, outages, or unavailable providers. Unmatched failures fail closed by default.
 
 It is designed for coding-agent CLIs such as Claude Code, Codex CLI, Gemini CLI, or any other command-line agent that can accept a prompt non-interactively.
 
@@ -11,7 +11,7 @@ It is designed for coding-agent CLIs such as Claude Code, Codex CLI, Gemini CLI,
 - Any number of providers/models; no hardcoded provider limit.
 - Deterministic priority/fallback order.
 - Generic provider adapter: executable + arguments + prompt mode.
-- Detects quota, rate limit, timeout, outage, unavailable command, auth, and provider failures.
+- Detects quota, rate limit, timeout, outage, unavailable command, auth, configured provider failures, and unknown failures; unknown failures fail closed by default.
 - Per-provider custom error patterns and failover policies.
 - Retries with exponential backoff before failover where appropriate.
 - Preserves task context across providers using the original task, previous attempts, and current Git working-tree summary.
@@ -29,7 +29,7 @@ Task
   |
   v
 Provider priority #1
-  | quota / 429 / timeout / outage / provider error
+  | quota / 429 / timeout / outage / unavailable
   v
 retry (when useful) -> exponential backoff
   |
@@ -283,7 +283,7 @@ provider
 
 ### Control which failures trigger failover
 
-By default all supported failure kinds fail over. Override per provider:
+By default, automatic failover is limited to `quota`, `rate_limit`, `timeout`, `outage`, and `unavailable`. Auth failures, explicitly configured generic provider failures, and unmatched/unknown failures do not fail over unless you deliberately opt in where supported. Override per provider:
 
 ```json
 {
@@ -331,7 +331,7 @@ Run:
 airun daemon
 ```
 
-The daemon checks queued/paused tasks every `poll_interval_seconds` and retries them. Duplicate execution is prevented by a per-task filesystem lock, so another `airun` process cannot execute the same task at the same time.
+The daemon reconciles orphaned `running` tasks after crashes/restarts, then checks queued/paused tasks every `poll_interval_seconds` and retries them. Duplicate execution is prevented by a per-task filesystem lock with stale-owner detection, so another live `airun` process cannot execute the same task at the same time.
 
 For a machine that should resume tasks continuously, run `airun daemon` under your normal process supervisor (systemd, launchd, Windows Task Scheduler, Docker, etc.). The project intentionally does not install a background service automatically.
 
@@ -363,7 +363,9 @@ For operations such as production deploys, database migrations, payments, publis
 - inspect state before replaying a dangerous operation;
 - do not assume failover is equivalent to a distributed transaction coordinator.
 
-`airun` also does not promise that error wording from every future provider release will match built-in patterns. Use `error_patterns` when a provider changes its messages.
+`airun` also does not promise that error wording from every future provider release will match built-in patterns. Use `error_patterns` when a provider changes its messages. State writes use a temporary file plus rename; exact atomic replacement/durability guarantees remain platform/filesystem dependent.
+
+On timeout/cancellation, provider processes are started in an OS-specific process group/tree and `airun` attempts to terminate the full tree before retry/failover. If tree termination itself cannot be guaranteed, routing fails closed instead of starting another provider.
 
 ## Development
 
