@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
 	"strings"
@@ -25,14 +26,15 @@ import (
 const Version = "0.1.0"
 
 type App struct {
-	In     io.Reader
-	Out    io.Writer
-	ErrOut io.Writer
-	Getwd  func() (string, error)
+	In       io.Reader
+	Out      io.Writer
+	ErrOut   io.Writer
+	Getwd    func() (string, error)
+	LookPath func(string) (string, error)
 }
 
 func New() *App {
-	return &App{In: os.Stdin, Out: os.Stdout, ErrOut: os.Stderr, Getwd: os.Getwd}
+	return &App{In: os.Stdin, Out: os.Stdout, ErrOut: os.Stderr, Getwd: os.Getwd, LookPath: exec.LookPath}
 }
 
 func (a *App) Run(ctx context.Context, args []string) int {
@@ -59,7 +61,10 @@ func (a *App) Run(ctx context.Context, args []string) int {
 			return 1
 		}
 		fmt.Fprintf(a.Out, "created %s\n", configPath)
+		fmt.Fprintln(a.Out, "tip: run `airun setup` to configure providers interactively")
 		return 0
+	case "setup", "configure":
+		return a.setupProviders(configPath)
 	}
 
 	rt, cleanup, err := a.runtime(configPath)
@@ -113,10 +118,11 @@ func (a *App) runtime(configPath string) (*runtime, func(), error) {
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, func() {}, fmt.Errorf("config not found: %s (run: airun init)", configPath)
+			return nil, func() {}, fmt.Errorf("config not found: %s (run: airun init or airun setup)", configPath)
 		}
 		return nil, func() {}, err
 	}
+	a.warnMissingProviders(cfg)
 	wd, err := a.Getwd()
 	if err != nil {
 		return nil, func() {}, err
@@ -353,6 +359,8 @@ func (a *App) printHelp() {
 Usage:
   airun                       Start interactive CLI
   airun init [--force]        Create .airun/config.json
+  airun setup                 Interactively add/edit/remove AI providers
+  airun configure             Alias for airun setup
   airun run <task>            Execute a task with automatic failover
   airun status                Show provider health/status
   airun active-provider       Show active/preferred provider
