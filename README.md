@@ -278,7 +278,7 @@ Default `.airun/config.json`:
       "name": "codex",
       "priority": 20,
       "command": "codex",
-      "args": ["exec", "{{prompt}}"],
+      "args": ["exec", "--skip-git-repo-check", "{{prompt}}"],
       "prompt_mode": "arg",
       "timeout_seconds": 1800,
       "max_retries": 1,
@@ -301,6 +301,8 @@ Default `.airun/config.json`:
 ```
 
 The CLI syntax above matches the common non-interactive entry points (`claude -p`, `codex exec`, `gemini -p`) at the time this project was created. If your installed CLI version differs, edit `command`/`args`; the router itself is provider-agnostic.
+
+The built-in Codex configuration includes `--skip-git-repo-check` so `airun` can run from non-Git directories as documented. When loading an older generated config with the exact legacy Codex args `["exec", "{{prompt}}"]`, `airun` upgrades that built-in command shape in memory. Custom Codex arguments are left unchanged.
 
 ### Runtime state location
 
