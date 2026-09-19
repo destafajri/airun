@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/destafajri/smart-routing/internal/config"
+	"github.com/destafajri/airun/internal/config"
 )
 
 func TestRunTimeoutStopsDescendantProcessTree(t *testing.T) {

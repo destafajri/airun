@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/destafajri/smart-routing/internal/model"
+	"github.com/destafajri/airun/internal/model"
 )
 
 func TestStorePersistsTask(t *testing.T) {

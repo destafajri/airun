@@ -1,3 +1,3 @@
-module github.com/destafajri/smart-routing
+module github.com/destafajri/airun
 
 go 1.23

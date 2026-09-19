@@ -6,7 +6,7 @@ import (
 	goruntime "runtime"
 	"testing"
 
-	"github.com/destafajri/smart-routing/internal/config"
+	"github.com/destafajri/airun/internal/config"
 )
 
 func TestResolveStateDirDefaultsOutsideProviderWorkdir(t *testing.T) {

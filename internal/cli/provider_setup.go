@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/destafajri/smart-routing/internal/config"
+	"github.com/destafajri/airun/internal/config"
 )
 
 func (a *App) warnMissingProviders(cfg config.Config) {

@@ -1,10 +1,10 @@
-# Smart Routing (`airun`)
+# airun
 
 `airun` is a local, deterministic AI CLI router. It runs a task through a configurable provider priority list and automatically fails over for explicitly classified infrastructure failures such as quota/rate limits, timeouts, outages, or unavailable providers. Unmatched failures fail closed by default.
 
 It is designed for coding-agent CLIs such as Claude Code, Codex CLI, Gemini CLI, or any other command-line agent that can accept a prompt non-interactively.
 
-> **Status:** MVP (`v0.1.0`). The routing/state engine and CLI are tested locally. Real provider end-to-end behavior still depends on the provider CLI version, authentication, output format, and error text installed on your machine.
+> **Status:** MVP (`v0.2.1`). The routing/state engine and CLI are tested locally. Real provider end-to-end behavior still depends on the provider CLI version, authentication, output format, and error text installed on your machine.
 
 ## Features
 
@@ -70,7 +70,7 @@ Provider CLIs are separate products. Install and authenticate them according to 
 After Go is installed:
 
 ```bash
-go install github.com/destafajri/smart-routing/cmd/airun@latest
+go install github.com/destafajri/airun/cmd/airun@latest
 ```
 
 Make sure the Go binary directory is on your `PATH`.
@@ -96,8 +96,8 @@ airun version
 ### Option 2: Clone and build
 
 ```bash
-git clone https://github.com/destafajri/smart-routing.git
-cd smart-routing
+git clone https://github.com/destafajri/airun.git
+cd airun
 go test ./...
 go build -o airun ./cmd/airun
 ```
@@ -120,7 +120,7 @@ go build -o airun.exe ./cmd/airun
 If you originally installed `airun` with `go install`, upgrade to the latest published version with:
 
 ```bash
-go install github.com/destafajri/smart-routing/cmd/airun@latest
+go install github.com/destafajri/airun/cmd/airun@latest
 ```
 
 Then verify the binary that your shell resolves:
@@ -148,7 +148,7 @@ Make sure that path points to the Go-installed binary (commonly `$(go env GOPATH
 If you installed from a cloned repository instead, update the source and rebuild:
 
 ```bash
-cd /path/to/smart-routing
+cd /path/to/airun
 git pull
 go test ./...
 go build -o airun ./cmd/airun

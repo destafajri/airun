@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/destafajri/smart-routing/internal/config"
-	"github.com/destafajri/smart-routing/internal/model"
-	"github.com/destafajri/smart-routing/internal/state"
+	"github.com/destafajri/airun/internal/config"
+	"github.com/destafajri/airun/internal/model"
+	"github.com/destafajri/airun/internal/state"
 )
 
 type fakeRunner struct {

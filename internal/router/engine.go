@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/destafajri/smart-routing/internal/config"
-	"github.com/destafajri/smart-routing/internal/gitctx"
-	"github.com/destafajri/smart-routing/internal/model"
-	"github.com/destafajri/smart-routing/internal/state"
+	"github.com/destafajri/airun/internal/config"
+	"github.com/destafajri/airun/internal/gitctx"
+	"github.com/destafajri/airun/internal/model"
+	"github.com/destafajri/airun/internal/state"
 )
 
 var ErrUnsafeProviderTermination = errors.New("provider process tree could not be terminated")

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/destafajri/smart-routing/internal/config"
+	"github.com/destafajri/airun/internal/config"
 )
 
 func TestWarnMissingProvidersReportsConfiguredCommandNotFound(t *testing.T) {
