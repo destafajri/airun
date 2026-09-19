@@ -75,7 +75,7 @@ func TestEnginePausesWhenAllProvidersFail(t *testing.T) {
 	}
 	store := state.New(filepath.Join(t.TempDir(), "state.json"))
 	runner := &fakeRunner{results: map[string][]RunResult{
-		"claude": {{Err: errors.New("503 unavailable")}},
+		"claude": {{Err: errors.New("service unavailable HTTP 503")}},
 		"codex":  {{Err: errors.New("rate limit 429")}},
 	}}
 	eng := NewEngine(cfg, store, runner, EngineOptions{})
