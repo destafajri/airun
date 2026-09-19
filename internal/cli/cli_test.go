@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"testing"
 
 	"github.com/destafajri/smart-routing/internal/config"
@@ -81,4 +82,27 @@ func pathWithin(path, root string) bool {
 	}
 	return rel != ".." && rel != "." && !filepath.IsAbs(rel) &&
 		len(rel) > 0 && rel[:1] != "."
+}
+
+
+func TestDefaultStateHomeIgnoresRelativeXDGStateHome(t *testing.T) {
+	if goruntime.GOOS != "linux" {
+		t.Skip("XDG_STATE_HOME behavior is Linux-specific")
+	}
+	home := t.TempDir()
+	t.Setenv("AIRUN_STATE_HOME", "")
+	t.Setenv("XDG_STATE_HOME", ".state")
+	t.Setenv("HOME", home)
+
+	got, err := defaultStateHome()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(home, ".local", "state", "airun")
+	if got != want {
+		t.Fatalf("relative XDG_STATE_HOME must be ignored: got %q want %q", got, want)
+	}
+	if !filepath.IsAbs(got) {
+		t.Fatalf("state home must be absolute, got %q", got)
+	}
 }
