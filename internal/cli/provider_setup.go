@@ -137,7 +137,7 @@ func (a *App) promptProvider(scanner *bufio.Scanner, current config.ProviderConf
 	if !ok {
 		return config.ProviderConfig{}, false
 	}
-	args, ok := promptLine(scanner, a.Out, "Arguments (space-separated)", strings.Join(current.Args, " "))
+	args, ok := promptLine(scanner, a.Out, "Arguments (space-separated; - clears)", strings.Join(current.Args, " "))
 	if !ok {
 		return config.ProviderConfig{}, false
 	}
@@ -149,7 +149,7 @@ func (a *App) promptProvider(scanner *bufio.Scanner, current config.ProviderConf
 	if !ok {
 		return config.ProviderConfig{}, false
 	}
-	healthArgs, ok := promptLine(scanner, a.Out, "Health-check arguments", strings.Join(current.HealthArgs, " "))
+	healthArgs, ok := promptLine(scanner, a.Out, "Health-check arguments (- clears)", strings.Join(current.HealthArgs, " "))
 	if !ok {
 		return config.ProviderConfig{}, false
 	}
@@ -168,10 +168,10 @@ func (a *App) promptProvider(scanner *bufio.Scanner, current config.ProviderConf
 
 	current.Name = name
 	current.Command = strings.TrimSpace(command)
-	current.Args = fieldsOrNil(args)
+	current.Args = fieldsOrClear(args)
 	current.PromptMode = strings.ToLower(strings.TrimSpace(promptMode))
 	current.Priority = priority
-	current.HealthArgs = fieldsOrNil(healthArgs)
+	current.HealthArgs = fieldsOrClear(healthArgs)
 	current.TimeoutSeconds = timeout
 	current.MaxRetries = retries
 	current.RetryBackoffMillis = backoff
@@ -258,8 +258,12 @@ func promptInt(scanner *bufio.Scanner, out interface{ Write([]byte) (int, error)
 	}
 }
 
-func fieldsOrNil(value string) []string {
-	fields := strings.Fields(strings.TrimSpace(value))
+func fieldsOrClear(value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "-" {
+		return nil
+	}
+	fields := strings.Fields(value)
 	if len(fields) == 0 {
 		return nil
 	}
