@@ -70,7 +70,10 @@ func WriteDefault(path string, force bool) error {
 			return fmt.Errorf("config already exists: %s", path)
 		}
 	}
-	cfg := Default()
+	return Save(path, Default())
+}
+
+func Save(path string, cfg Config) error {
 	if err := cfg.ValidateAndNormalize(); err != nil {
 		return err
 	}
@@ -81,7 +84,15 @@ func WriteDefault(path string, force bool) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(b, '\n'), 0o644)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, append(b, '\n'), 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 func (c *Config) ValidateAndNormalize() error {
