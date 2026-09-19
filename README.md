@@ -302,7 +302,7 @@ Default `.airun/config.json`:
 
 The CLI syntax above matches the common non-interactive entry points (`claude -p`, `codex exec`, `gemini -p`) at the time this project was created. If your installed CLI version differs, edit `command`/`args`; the router itself is provider-agnostic.
 
-The built-in Codex configuration includes `--skip-git-repo-check` so `airun` can run from non-Git directories as documented. When loading an older generated config with the exact legacy Codex args `["exec", "{{prompt}}"]`, `airun` upgrades that built-in command shape in memory. Custom Codex arguments are left unchanged.
+The built-in Codex configuration includes `--skip-git-repo-check` so `airun` can run from non-Git directories as documented. When loading an older config, `airun` only upgrades Codex in memory when the provider matches the full historical v0.2.0 generated Codex shape (priority, command, args, prompt mode, timeout/retry values, health check, failover policy, and no custom env/error patterns). Customized Codex providers are left unchanged, including custom providers that intentionally keep `["exec", "{{prompt}}"]`.
 
 ### Runtime state location
 
