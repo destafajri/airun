@@ -4,12 +4,14 @@ import (
 	"bufio"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -119,9 +121,9 @@ func (a *App) runtime(configPath string) (*runtime, func(), error) {
 	if err != nil {
 		return nil, func() {}, err
 	}
-	stateDir := cfg.StateDir
-	if !filepath.IsAbs(stateDir) {
-		stateDir = filepath.Join(wd, stateDir)
+	stateDir, err := resolveStateDir(cfg, wd)
+	if err != nil {
+		return nil, func() {}, err
 	}
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		return nil, func() {}, err
@@ -392,6 +394,70 @@ func parseConfigFlag(args []string) (string, []string) {
 		out = append(out, args[i])
 	}
 	return path, out
+}
+
+func resolveStateDir(cfg config.Config, workdir string) (string, error) {
+	if stateDir := strings.TrimSpace(cfg.StateDir); stateDir != "" {
+		if filepath.IsAbs(stateDir) {
+			return filepath.Clean(stateDir), nil
+		}
+		return filepath.Clean(filepath.Join(workdir, stateDir)), nil
+	}
+
+	canonical, err := filepath.Abs(workdir)
+	if err != nil {
+		return "", fmt.Errorf("resolve project path: %w", err)
+	}
+	canonical, err = filepath.EvalSymlinks(canonical)
+	if err != nil {
+		return "", fmt.Errorf("canonicalize project path: %w", err)
+	}
+	canonical = filepath.Clean(canonical)
+	if runtime.GOOS == "windows" {
+		canonical = strings.ToLower(canonical)
+	}
+
+	root, err := defaultStateHome()
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256([]byte(canonical))
+	projectKey := hex.EncodeToString(sum[:16])
+	return filepath.Join(root, "projects", projectKey), nil
+}
+
+func defaultStateHome() (string, error) {
+	if override := strings.TrimSpace(os.Getenv("AIRUN_STATE_HOME")); override != "" {
+		abs, err := filepath.Abs(override)
+		if err != nil {
+			return "", fmt.Errorf("resolve AIRUN_STATE_HOME: %w", err)
+		}
+		return filepath.Clean(abs), nil
+	}
+
+	switch runtime.GOOS {
+	case "linux":
+		if xdg := strings.TrimSpace(os.Getenv("XDG_STATE_HOME")); xdg != "" {
+			return filepath.Join(xdg, "airun"), nil
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve user home for state: %w", err)
+		}
+		return filepath.Join(home, ".local", "state", "airun"), nil
+	case "darwin":
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve user home for state: %w", err)
+		}
+		return filepath.Join(home, "Library", "Application Support", "airun", "state"), nil
+	default:
+		dir, err := os.UserConfigDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve user state directory: %w", err)
+		}
+		return filepath.Join(dir, "airun", "state"), nil
+	}
 }
 
 func newTaskID() (string, error) {
