@@ -4,7 +4,7 @@
 
 It is designed for coding-agent CLIs such as Claude Code, Codex CLI, Gemini CLI, or any other command-line agent that can accept a prompt non-interactively.
 
-> **Status:** MVP (`v0.2.1`). The routing/state engine and CLI are tested locally. Real provider end-to-end behavior still depends on the provider CLI version, authentication, output format, and error text installed on your machine.
+> **Status:** MVP (`v0.2.2`). The routing/state engine and CLI are tested locally. Real provider end-to-end behavior still depends on the provider CLI version, authentication, output format, and error text installed on your machine.
 
 ## Features
 
