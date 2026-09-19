@@ -36,7 +36,7 @@ func Default() Config {
 		PollIntervalSeconds: 60,
 		Providers: []ProviderConfig{
 			{Name: "claude", Priority: 10, Command: "claude", Args: []string{"-p", "{{prompt}}"}, TimeoutSeconds: 1800, MaxRetries: 1, RetryBackoffMillis: 1500, HealthArgs: []string{"--version"}},
-			{Name: "codex", Priority: 20, Command: "codex", Args: []string{"exec", "{{prompt}}"}, TimeoutSeconds: 1800, MaxRetries: 1, RetryBackoffMillis: 1500, HealthArgs: []string{"--version"}},
+			{Name: "codex", Priority: 20, Command: "codex", Args: []string{"exec", "--skip-git-repo-check", "{{prompt}}"}, TimeoutSeconds: 1800, MaxRetries: 1, RetryBackoffMillis: 1500, HealthArgs: []string{"--version"}},
 			{Name: "gemini", Priority: 30, Command: "gemini", Args: []string{"-p", "{{prompt}}"}, TimeoutSeconds: 1800, MaxRetries: 1, RetryBackoffMillis: 1500, HealthArgs: []string{"--version"}},
 		},
 	}
@@ -58,10 +58,27 @@ func Load(path string) (Config, error) {
 	if err := json.Unmarshal(b, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse config: %w", err)
 	}
+	migrateLegacyProviderDefaults(&cfg)
 	if err := cfg.ValidateAndNormalize(); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+func migrateLegacyProviderDefaults(c *Config) {
+	for i := range c.Providers {
+		p := &c.Providers[i]
+		if strings.TrimSpace(p.Name) != "codex" || strings.TrimSpace(p.Command) != "codex" {
+			continue
+		}
+		promptMode := strings.TrimSpace(p.PromptMode)
+		if promptMode != "" && promptMode != "arg" {
+			continue
+		}
+		if len(p.Args) == 2 && p.Args[0] == "exec" && p.Args[1] == "{{prompt}}" {
+			p.Args = []string{"exec", "--skip-git-repo-check", "{{prompt}}"}
+		}
+	}
 }
 
 func WriteDefault(path string, force bool) error {
