@@ -8,10 +8,16 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/destafajri/smart-routing/internal/model"
 )
+
+const incompleteLockGrace = 2 * time.Second
+
+var unsafeTaskID = regexp.MustCompile("[^a-zA-Z0-9._-]+")
 
 type snapshot struct {
 	Tasks map[string]model.Task `json:"tasks"`
@@ -78,18 +84,104 @@ func (s *Store) AcquireTaskLock(taskID string) (func(), error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
-	safe := regexp.MustCompile(`[^a-zA-Z0-9._-]+`).ReplaceAllString(taskID, "_")
-	path := filepath.Join(dir, safe+".lock")
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if err != nil {
-		if errors.Is(err, os.ErrExist) {
+	path := s.taskLockPath(taskID)
+	for attempt := 0; attempt < 3; attempt++ {
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err == nil {
+			if _, writeErr := fmt.Fprintf(f, "%d\n", os.Getpid()); writeErr != nil {
+				_ = f.Close()
+				_ = os.Remove(path)
+				return nil, writeErr
+			}
+			if closeErr := f.Close(); closeErr != nil {
+				_ = os.Remove(path)
+				return nil, closeErr
+			}
+			return func() { _ = os.Remove(path) }, nil
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return nil, err
+		}
+		stale, staleErr := taskLockStale(path)
+		if staleErr != nil {
+			return nil, staleErr
+		}
+		if !stale {
 			return nil, fmt.Errorf("task %s is already executing", taskID)
 		}
-		return nil, err
+		if removeErr := os.Remove(path); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+			return nil, removeErr
+		}
 	}
-	_, _ = fmt.Fprintf(f, "%d\n", os.Getpid())
-	_ = f.Close()
-	return func() { _ = os.Remove(path) }, nil
+	return nil, fmt.Errorf("task %s lock could not be acquired", taskID)
+}
+
+// ReconcileOrphanedTasks converts running tasks whose owner process is gone into
+// paused tasks so they can be resumed safely after a crash or machine restart.
+func (s *Store) ReconcileOrphanedTasks() (int, error) {
+	recovered := 0
+	err := s.withStateLock(func() error {
+		ss, err := s.loadUnlocked()
+		if err != nil {
+			return err
+		}
+		changed := false
+		for id, task := range ss.Tasks {
+			if task.Status != model.TaskRunning {
+				continue
+			}
+			path := s.taskLockPath(id)
+			stale, err := taskLockStale(path)
+			if err != nil {
+				return err
+			}
+			if !stale {
+				continue
+			}
+			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+			task.Status = model.TaskPaused
+			task.ActiveProvider = ""
+			task.LastError = "recovered orphaned running task after interrupted execution"
+			task.UpdatedAt = time.Now().UTC()
+			ss.Tasks[id] = task
+			recovered++
+			changed = true
+		}
+		if !changed {
+			return nil
+		}
+		return s.saveUnlocked(ss)
+	})
+	return recovered, err
+}
+
+func (s *Store) taskLockPath(taskID string) string {
+	safe := unsafeTaskID.ReplaceAllString(taskID, "_")
+	return filepath.Join(filepath.Dir(s.path), "locks", safe+".lock")
+}
+
+func taskLockStale(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return true, nil
+		}
+		return false, err
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	if err != nil || pid <= 0 {
+		return time.Since(info.ModTime()) >= incompleteLockGrace, nil
+	}
+	return !processAlive(pid), nil
 }
 
 func (s *Store) withStateLock(fn func() error) error {
