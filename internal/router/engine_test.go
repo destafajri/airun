@@ -169,3 +169,75 @@ func TestEngineCancellationStopsDuringBackoff(t *testing.T) {
 		t.Fatal("cancellation did not stop backoff promptly")
 	}
 }
+
+
+type cancelUnsafeRunner struct {
+	cancel context.CancelFunc
+	calls  []string
+}
+
+func (r *cancelUnsafeRunner) Health(ctx context.Context, p config.ProviderConfig, workdir string) error {
+	return nil
+}
+
+func (r *cancelUnsafeRunner) Run(ctx context.Context, p config.ProviderConfig, prompt, workdir string, out io.Writer) RunResult {
+	r.calls = append(r.calls, p.Name)
+	r.cancel()
+	return RunResult{Err: ErrUnsafeProviderTermination}
+}
+
+func TestEngineUnsafeTerminationBeatsCancellationAndFailsClosed(t *testing.T) {
+	cfg := config.Config{Providers: []config.ProviderConfig{
+		{Name: "one", Priority: 1, Command: "one"},
+		{Name: "two", Priority: 2, Command: "two"},
+	}}
+	if err := cfg.ValidateAndNormalize(); err != nil {
+		t.Fatal(err)
+	}
+	store := state.New(filepath.Join(t.TempDir(), "state.json"))
+	if err := store.UpsertTask(model.NewTask("unsafe-cancel", "task")); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	runner := &cancelUnsafeRunner{cancel: cancel}
+	eng := NewEngine(cfg, store, runner, EngineOptions{})
+	got, err := eng.Execute(ctx, "unsafe-cancel")
+	if !errors.Is(err, ErrUnsafeProviderTermination) {
+		t.Fatalf("error %v, want unsafe termination", err)
+	}
+	if got.Status != model.TaskFailed {
+		t.Fatalf("status %s, want failed", got.Status)
+	}
+	if len(runner.calls) != 1 || runner.calls[0] != "one" {
+		t.Fatalf("unexpected provider calls: %v", runner.calls)
+	}
+}
+
+func TestEngineDoesNotClassifyNormalOutputAsInfrastructureFailure(t *testing.T) {
+	cfg := config.Config{Providers: []config.ProviderConfig{
+		{Name: "one", Priority: 1, Command: "one"},
+		{Name: "two", Priority: 2, Command: "two"},
+	}}
+	if err := cfg.ValidateAndNormalize(); err != nil {
+		t.Fatal(err)
+	}
+	store := state.New(filepath.Join(t.TempDir(), "state.json"))
+	if err := store.UpsertTask(model.NewTask("output-mention", "task")); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeRunner{results: map[string][]RunResult{
+		"one": {{Output: "documentation example: HTTP 429 rate limit", Err: errors.New("tests failed")}},
+		"two": {{Output: "must not run"}},
+	}}
+	eng := NewEngine(cfg, store, runner, EngineOptions{})
+	got, err := eng.Execute(context.Background(), "output-mention")
+	if err == nil {
+		t.Fatal("expected unrelated task failure")
+	}
+	if got.Status != model.TaskFailed {
+		t.Fatalf("status %s, want failed", got.Status)
+	}
+	if len(runner.calls) != 1 || runner.calls[0] != "one" {
+		t.Fatalf("unexpected provider calls: %v", runner.calls)
+	}
+}
