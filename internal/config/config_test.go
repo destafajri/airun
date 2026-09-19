@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -34,7 +35,6 @@ func TestValidateRejectsDuplicateProviderNames(t *testing.T) {
 	}
 }
 
-
 func TestDefaultFailoverIsLimitedToKnownInfrastructureFailures(t *testing.T) {
 	cfg := Config{Providers: []ProviderConfig{{Name: "one", Command: "one"}}}
 	if err := cfg.ValidateAndNormalize(); err != nil {
@@ -52,7 +52,6 @@ func TestDefaultFailoverIsLimitedToKnownInfrastructureFailures(t *testing.T) {
 	}
 }
 
-
 func TestDefaultUsesAutomaticExternalStateDir(t *testing.T) {
 	cfg := Default()
 	if err := cfg.ValidateAndNormalize(); err != nil {
@@ -63,6 +62,115 @@ func TestDefaultUsesAutomaticExternalStateDir(t *testing.T) {
 	}
 }
 
+func TestDefaultCodexSkipsGitRepoCheck(t *testing.T) {
+	cfg := Default()
+	var codex *ProviderConfig
+	for i := range cfg.Providers {
+		if cfg.Providers[i].Name == "codex" {
+			codex = &cfg.Providers[i]
+			break
+		}
+	}
+	if codex == nil {
+		t.Fatal("default codex provider not found")
+	}
+
+	want := []string{"exec", "--skip-git-repo-check", "{{prompt}}"}
+	if !reflect.DeepEqual(codex.Args, want) {
+		t.Fatalf("codex args = %v, want %v", codex.Args, want)
+	}
+}
+
+func TestLoadMigratesHistoricalGeneratedCodexProvider(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	legacy := `{
+  "providers": [
+    {
+      "name": "codex",
+      "priority": 20,
+      "command": "codex",
+      "args": ["exec", "{{prompt}}"],
+      "prompt_mode": "arg",
+      "timeout_seconds": 1800,
+      "max_retries": 1,
+      "retry_backoff_millis": 1500,
+      "health_args": ["--version"],
+      "failover_on": ["quota", "rate_limit", "timeout", "outage", "unavailable"]
+    }
+  ]
+}`
+	if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"exec", "--skip-git-repo-check", "{{prompt}}"}
+	if !reflect.DeepEqual(cfg.Providers[0].Args, want) {
+		t.Fatalf("migrated codex args = %v, want %v", cfg.Providers[0].Args, want)
+	}
+}
+
+func TestLoadPreservesCustomizedCodexWithLegacyArgs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	custom := `{
+  "providers": [
+    {
+      "name": "codex",
+      "priority": 5,
+      "command": "codex",
+      "args": ["exec", "{{prompt}}"],
+      "prompt_mode": "arg",
+      "timeout_seconds": 1800,
+      "max_retries": 1,
+      "retry_backoff_millis": 1500,
+      "health_args": ["--version"],
+      "failover_on": ["quota", "rate_limit", "timeout", "outage", "unavailable"]
+    }
+  ]
+}`
+	if err := os.WriteFile(path, []byte(custom), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"exec", "{{prompt}}"}
+	if !reflect.DeepEqual(cfg.Providers[0].Args, want) {
+		t.Fatalf("custom codex args = %v, want unchanged %v", cfg.Providers[0].Args, want)
+	}
+}
+
+func TestLoadPreservesCustomCodexArgs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	custom := `{
+  "providers": [
+    {
+      "name": "codex",
+      "priority": 20,
+      "command": "codex",
+      "args": ["exec", "--full-auto", "{{prompt}}"],
+      "prompt_mode": "arg"
+    }
+  ]
+}`
+	if err := os.WriteFile(path, []byte(custom), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"exec", "--full-auto", "{{prompt}}"}
+	if !reflect.DeepEqual(cfg.Providers[0].Args, want) {
+		t.Fatalf("custom codex args = %v, want unchanged %v", cfg.Providers[0].Args, want)
+	}
+}
 
 func TestSavePreservesExistingConfigWhenReplacementFails(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")

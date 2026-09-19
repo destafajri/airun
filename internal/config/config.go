@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -36,7 +37,7 @@ func Default() Config {
 		PollIntervalSeconds: 60,
 		Providers: []ProviderConfig{
 			{Name: "claude", Priority: 10, Command: "claude", Args: []string{"-p", "{{prompt}}"}, TimeoutSeconds: 1800, MaxRetries: 1, RetryBackoffMillis: 1500, HealthArgs: []string{"--version"}},
-			{Name: "codex", Priority: 20, Command: "codex", Args: []string{"exec", "{{prompt}}"}, TimeoutSeconds: 1800, MaxRetries: 1, RetryBackoffMillis: 1500, HealthArgs: []string{"--version"}},
+			{Name: "codex", Priority: 20, Command: "codex", Args: []string{"exec", "--skip-git-repo-check", "{{prompt}}"}, TimeoutSeconds: 1800, MaxRetries: 1, RetryBackoffMillis: 1500, HealthArgs: []string{"--version"}},
 			{Name: "gemini", Priority: 30, Command: "gemini", Args: []string{"-p", "{{prompt}}"}, TimeoutSeconds: 1800, MaxRetries: 1, RetryBackoffMillis: 1500, HealthArgs: []string{"--version"}},
 		},
 	}
@@ -58,10 +59,35 @@ func Load(path string) (Config, error) {
 	if err := json.Unmarshal(b, &cfg); err != nil {
 		return Config{}, fmt.Errorf("parse config: %w", err)
 	}
+	migrateLegacyProviderDefaults(&cfg)
 	if err := cfg.ValidateAndNormalize(); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+func migrateLegacyProviderDefaults(c *Config) {
+	for i := range c.Providers {
+		p := &c.Providers[i]
+		if isHistoricalGeneratedCodexProvider(*p) {
+			p.Args = []string{"exec", "--skip-git-repo-check", "{{prompt}}"}
+		}
+	}
+}
+
+func isHistoricalGeneratedCodexProvider(p ProviderConfig) bool {
+	return p.Name == "codex" &&
+		p.Priority == 20 &&
+		p.Command == "codex" &&
+		slices.Equal(p.Args, []string{"exec", "{{prompt}}"}) &&
+		p.PromptMode == "arg" &&
+		p.TimeoutSeconds == 1800 &&
+		p.MaxRetries == 1 &&
+		p.RetryBackoffMillis == 1500 &&
+		slices.Equal(p.HealthArgs, []string{"--version"}) &&
+		p.Env == nil &&
+		p.ErrorPatterns == nil &&
+		slices.Equal(p.FailoverOn, []string{"quota", "rate_limit", "timeout", "outage", "unavailable"})
 }
 
 func WriteDefault(path string, force bool) error {
