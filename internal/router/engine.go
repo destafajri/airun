@@ -17,8 +17,9 @@ import (
 var ErrUnsafeProviderTermination = errors.New("provider process tree could not be terminated")
 
 type RunResult struct {
-	Output string
-	Err    error
+	Output     string
+	Diagnostic string
+	Err        error
 }
 
 type Runner interface {
@@ -81,9 +82,6 @@ func (e *Engine) Execute(ctx context.Context, taskID string) (model.Task, error)
 		}
 
 		if err := e.runner.Health(ctx, p, e.opts.Workdir); err != nil {
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				return e.pauseForCancellation(task, ctxErr)
-			}
 			if errors.Is(err, ErrUnsafeProviderTermination) {
 				task.Status = model.TaskFailed
 				task.ActiveProvider = p.Name
@@ -92,6 +90,9 @@ func (e *Engine) Execute(ctx context.Context, taskID string) (model.Task, error)
 					return task, errors.Join(err, persistErr)
 				}
 				return task, err
+			}
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return e.pauseForCancellation(task, ctxErr)
 			}
 
 			kind := FailureUnavailable
@@ -140,12 +141,6 @@ func (e *Engine) Execute(ctx context.Context, taskID string) (model.Task, error)
 				return task, nil
 			}
 
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				task.LastOutput = truncate(res.Output, 16000)
-				task.Attempts = append(task.Attempts, model.Attempt{Provider: p.Name, StartedAt: started, FinishedAt: finished, FailureKind: "canceled", Error: ctxErr.Error(), Output: task.LastOutput})
-				return e.pauseForCancellation(task, ctxErr)
-			}
-
 			if errors.Is(res.Err, ErrUnsafeProviderTermination) {
 				task.Status = model.TaskFailed
 				task.LastError = res.Err.Error()
@@ -157,7 +152,13 @@ func (e *Engine) Execute(ctx context.Context, taskID string) (model.Task, error)
 				return task, res.Err
 			}
 
-			failureText := res.Output + "\n" + res.Err.Error()
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				task.LastOutput = truncate(res.Output, 16000)
+				task.Attempts = append(task.Attempts, model.Attempt{Provider: p.Name, StartedAt: started, FinishedAt: finished, FailureKind: "canceled", Error: ctxErr.Error(), Output: task.LastOutput})
+				return e.pauseForCancellation(task, ctxErr)
+			}
+
+			failureText := res.Diagnostic + "\n" + res.Err.Error()
 			kind := ClassifyProviderFailure(failureText, customPatterns(p.ErrorPatterns))
 			lastErr = fmt.Errorf("%s failed (%s): %w", p.Name, kind, res.Err)
 			task.LastError = lastErr.Error()
