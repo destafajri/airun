@@ -5,11 +5,25 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 
 	"github.com/destafajri/smart-routing/internal/config"
 )
+
+func (a *App) warnMissingProviders(cfg config.Config) {
+	lookPath := a.LookPath
+	if lookPath == nil {
+		lookPath = exec.LookPath
+	}
+	for _, p := range cfg.Providers {
+		if _, err := lookPath(p.Command); err == nil {
+			continue
+		}
+		fmt.Fprintf(a.ErrOut, "warning: provider %q command %q is not installed or not available in PATH; install it or run `airun setup` to update provider settings.\n", p.Name, p.Command)
+	}
+}
 
 func (a *App) setupProviders(configPath string) int {
 	cfg, err := config.Load(configPath)
