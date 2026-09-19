@@ -15,12 +15,12 @@ It is designed for coding-agent CLIs such as Claude Code, Codex CLI, Gemini CLI,
 - Per-provider custom error patterns and failover policies.
 - Retries with exponential backoff before failover where appropriate.
 - Preserves task context across providers using the original task, previous attempts, and current Git working-tree summary.
-- Saves task/execution state locally in `.airun/state.json`.
+- Saves runtime task/execution state in a per-project user-state directory outside the provider working tree by default.
 - Prevents the same task from running concurrently with task lock files.
 - Pauses unfinished tasks when all providers are exhausted.
 - `airun daemon` automatically retries paused tasks when providers become usable again.
 - Interactive REPL and one-shot CLI modes.
-- Local event log at `.airun/airun.log`.
+- Stores the runtime event log with the external per-project control state.
 
 ## How failover works
 
@@ -178,7 +178,6 @@ Default `.airun/config.json`:
 
 ```json
 {
-  "state_dir": ".airun",
   "poll_interval_seconds": 60,
   "providers": [
     {
@@ -219,6 +218,26 @@ Default `.airun/config.json`:
 ```
 
 The CLI syntax above matches the common non-interactive entry points (`claude -p`, `codex exec`, `gemini -p`) at the time this project was created. If your installed CLI version differs, edit `command`/`args`; the router itself is provider-agnostic.
+
+### Runtime state location
+
+By default, `state_dir` is omitted. `airun` keeps runtime control state **outside the provider working tree**, under an OS user-state location keyed by the canonical project path. This keeps `state.json`, logs, and advisory lock files away from normal agent edits and repository cleanup commands.
+
+You can override the root used for automatic per-project state:
+
+```bash
+export AIRUN_STATE_HOME="/path/to/airun-state"
+```
+
+Or set `state_dir` explicitly in project config:
+
+```json
+{
+  "state_dir": "/absolute/path/to/airun-state"
+}
+```
+
+A relative explicit `state_dir` is resolved from the project working directory for compatibility. Putting runtime state inside the provider working tree weakens duplicate-execution/recovery isolation and is not recommended.
 
 ### Add unlimited providers
 
@@ -337,19 +356,24 @@ For a machine that should resume tasks continuously, run `airun daemon` under yo
 
 ## Local files
 
-By default:
+Project-local configuration remains:
 
 ```text
-.airun/
-├── config.json     # provider configuration
-├── state.json      # task/execution state
-├── airun.log       # routing/retry/failover events
-└── locks/          # duplicate-execution locks
+<project>/.airun/config.json
 ```
 
-`state.json` and logs may contain task/error text. Treat `.airun/` as local/private state and normally add it to your project's `.gitignore`.
+Runtime control files are outside the provider working tree by default and are namespaced by a hash of the canonical project path:
 
-Do not store API keys in `config.json`. Provider subprocesses inherit your existing shell environment, so use the provider's normal login flow or environment variables/secret manager.
+```text
+<user-state>/airun/.../projects/<project-key>/
+├── state.json      # task/execution state
+├── airun.log       # routing/retry/failover events
+└── locks/          # OS advisory-lock files
+```
+
+Typical automatic roots are `$XDG_STATE_HOME/airun` (or `~/.local/state/airun`) on Linux, `~/Library/Application Support/airun/state` on macOS, and the user's application-config area under `airun/state` on Windows. `AIRUN_STATE_HOME` overrides this root.
+
+`state.json` and logs may contain task/error text and should be treated as private local data. Do not store API keys in `config.json`. Provider subprocesses inherit your existing shell environment, so use the provider's normal login flow or environment variables/secret manager.
 
 ## Safety and limitations
 
@@ -366,6 +390,8 @@ For operations such as production deploys, database migrations, payments, publis
 `airun` also does not promise that error wording from every future provider release will match built-in patterns. Use `error_patterns` when a provider changes its diagnostic messages. Provider stdout is treated as task output and is not used by default to infer infrastructure failures. State writes use a temporary file plus rename; exact atomic replacement/durability guarantees remain platform/filesystem dependent.
 
 On timeout/cancellation, provider processes are started in an OS-specific process group/tree and `airun` attempts to terminate the full tree before retry/failover. If tree termination itself cannot be guaranteed, routing fails closed instead of starting another provider.
+
+Keeping control state outside the working tree protects it from ordinary provider edits and cleanup commands, but it is **not a security boundary against a malicious process running as the same OS user**. A same-user process may still be able to access user-state files directly. Use an OS/container sandbox or a separate restricted user account if hostile-provider isolation is required.
 
 ## Development
 
