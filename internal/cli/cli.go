@@ -437,8 +437,8 @@ func defaultStateHome() (string, error) {
 
 	switch goruntime.GOOS {
 	case "linux":
-		if xdg := strings.TrimSpace(os.Getenv("XDG_STATE_HOME")); xdg != "" {
-			return filepath.Join(xdg, "airun"), nil
+		if xdg := strings.TrimSpace(os.Getenv("XDG_STATE_HOME")); xdg != "" && filepath.IsAbs(xdg) {
+			return filepath.Join(filepath.Clean(xdg), "airun"), nil
 		}
 		home, err := os.UserHomeDir()
 		if err != nil {
