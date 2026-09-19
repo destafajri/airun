@@ -115,6 +115,49 @@ go build -o airun.exe ./cmd/airun
 # Move airun.exe to a directory that is on PATH.
 ```
 
+### Update / upgrade an existing installation
+
+If you originally installed `airun` with `go install`, upgrade to the latest published version with:
+
+```bash
+go install github.com/destafajri/smart-routing/cmd/airun@latest
+```
+
+Then verify the binary that your shell resolves:
+
+```bash
+airun version
+```
+
+If the version did not change, check which binary is being executed:
+
+macOS/Linux:
+
+```bash
+which airun
+```
+
+Windows PowerShell:
+
+```powershell
+Get-Command airun
+```
+
+Make sure that path points to the Go-installed binary (commonly `$(go env GOPATH)/bin/airun` on macOS/Linux or `%USERPROFILE%\\go\\bin\\airun.exe` on Windows), or replace the older copy that appears earlier on your `PATH`.
+
+If you installed from a cloned repository instead, update the source and rebuild:
+
+```bash
+cd /path/to/smart-routing
+git pull
+go test ./...
+go build -o airun ./cmd/airun
+```
+
+Then replace the previously installed binary with the newly built one using the same location you chose during installation.
+
+Your project configuration and external runtime state are not removed by replacing the `airun` executable.
+
 ## Quick start
 
 Go to the project/repository where you want AI agents to work:
