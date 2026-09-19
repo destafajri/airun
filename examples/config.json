@@ -1,5 +1,4 @@
 {
-  "state_dir": ".airun",
   "poll_interval_seconds": 60,
   "providers": [
     {
