@@ -23,7 +23,7 @@ import (
 	"github.com/destafajri/smart-routing/internal/state"
 )
 
-const Version = "0.1.0"
+const Version = "0.2.0"
 
 type App struct {
 	In       io.Reader
