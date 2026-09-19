@@ -167,19 +167,15 @@ func TestConcurrentStaleTaskLockReclaimHasSingleOwner(t *testing.T) {
 		}()
 	}
 	close(start)
-	for i := 0; i < contenders; i++ {
-		<-results
-	}
-	close(releaseWinner)
-	wg.Wait()
-	close(results)
-
 	successes := 0
-	for ok := range results {
-		if ok {
+	for i := 0; i < contenders; i++ {
+		if <-results {
 			successes++
 		}
 	}
+	close(releaseWinner)
+	wg.Wait()
+
 	if successes != 1 {
 		t.Fatalf("successful concurrent lock owners = %d, want 1", successes)
 	}
