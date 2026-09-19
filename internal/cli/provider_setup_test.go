@@ -146,3 +146,49 @@ func TestSetupCommandEditsAndRemovesProviders(t *testing.T) {
 		t.Fatalf("edited provider = %+v", cfg.Providers[0])
 	}
 }
+
+
+func TestSetupCommandCanClearArgsAndHealthCheck(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.json")
+	input := strings.Join([]string{
+		"1",         // add provider
+		"custom",    // name
+		"custom-ai", // command
+		"-",         // clear args
+		"stdin",     // prompt mode
+		"10",        // priority
+		"-",         // clear health args
+		"1200",      // timeout
+		"1",         // retries
+		"500",       // backoff
+		"4",         // save
+		"",
+	}, "\n")
+	var out, errOut bytes.Buffer
+	app := &App{
+		In: strings.NewReader(input),
+		Out: &out,
+		ErrOut: &errOut,
+		Getwd: func() (string, error) { return dir, nil },
+		LookPath: func(command string) (string, error) { return "", os.ErrNotExist },
+	}
+
+	if code := app.Run(context.Background(), []string{"--config", configPath, "setup"}); code != 0 {
+		t.Fatalf("setup exit = %d stderr=%q stdout=%q", code, errOut.String(), out.String())
+	}
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := cfg.Providers[0]
+	if p.PromptMode != "stdin" {
+		t.Fatalf("prompt mode = %q want stdin", p.PromptMode)
+	}
+	if len(p.Args) != 0 {
+		t.Fatalf("args = %v, want empty", p.Args)
+	}
+	if len(p.HealthArgs) != 0 {
+		t.Fatalf("health args = %v, want empty", p.HealthArgs)
+	}
+}
