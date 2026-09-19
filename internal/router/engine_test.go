@@ -241,3 +241,40 @@ func TestEngineDoesNotClassifyNormalOutputAsInfrastructureFailure(t *testing.T) 
 		t.Fatalf("unexpected provider calls: %v", runner.calls)
 	}
 }
+
+
+type healthCancelUnsafeRunner struct {
+	cancel context.CancelFunc
+}
+
+func (r *healthCancelUnsafeRunner) Health(ctx context.Context, p config.ProviderConfig, workdir string) error {
+	r.cancel()
+	return ErrUnsafeProviderTermination
+}
+
+func (r *healthCancelUnsafeRunner) Run(ctx context.Context, p config.ProviderConfig, prompt, workdir string, out io.Writer) RunResult {
+	return RunResult{Output: "must not run"}
+}
+
+func TestEngineUnsafeHealthTerminationBeatsCancellationAndFailsClosed(t *testing.T) {
+	cfg := config.Config{Providers: []config.ProviderConfig{
+		{Name: "one", Priority: 1, Command: "one"},
+		{Name: "two", Priority: 2, Command: "two"},
+	}}
+	if err := cfg.ValidateAndNormalize(); err != nil {
+		t.Fatal(err)
+	}
+	store := state.New(filepath.Join(t.TempDir(), "state.json"))
+	if err := store.UpsertTask(model.NewTask("unsafe-health", "task")); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	eng := NewEngine(cfg, store, &healthCancelUnsafeRunner{cancel: cancel}, EngineOptions{})
+	got, err := eng.Execute(ctx, "unsafe-health")
+	if !errors.Is(err, ErrUnsafeProviderTermination) {
+		t.Fatalf("error %v, want unsafe termination", err)
+	}
+	if got.Status != model.TaskFailed {
+		t.Fatalf("status %s, want failed", got.Status)
+	}
+}
