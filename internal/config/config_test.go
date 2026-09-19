@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -75,13 +76,62 @@ func TestDefaultCodexSkipsGitRepoCheck(t *testing.T) {
 	}
 
 	want := []string{"exec", "--skip-git-repo-check", "{{prompt}}"}
-	if len(codex.Args) != len(want) {
+	if !reflect.DeepEqual(codex.Args, want) {
 		t.Fatalf("codex args = %v, want %v", codex.Args, want)
 	}
-	for i := range want {
-		if codex.Args[i] != want[i] {
-			t.Fatalf("codex args = %v, want %v", codex.Args, want)
-		}
+}
+
+func TestLoadMigratesLegacyDefaultCodexArgs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	legacy := `{
+  "providers": [
+    {
+      "name": "codex",
+      "priority": 20,
+      "command": "codex",
+      "args": ["exec", "{{prompt}}"],
+      "prompt_mode": "arg"
+    }
+  ]
+}`
+	if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"exec", "--skip-git-repo-check", "{{prompt}}"}
+	if !reflect.DeepEqual(cfg.Providers[0].Args, want) {
+		t.Fatalf("migrated codex args = %v, want %v", cfg.Providers[0].Args, want)
+	}
+}
+
+func TestLoadPreservesCustomCodexArgs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	custom := `{
+  "providers": [
+    {
+      "name": "codex",
+      "priority": 20,
+      "command": "codex",
+      "args": ["exec", "--full-auto", "{{prompt}}"],
+      "prompt_mode": "arg"
+    }
+  ]
+}`
+	if err := os.WriteFile(path, []byte(custom), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"exec", "--full-auto", "{{prompt}}"}
+	if !reflect.DeepEqual(cfg.Providers[0].Args, want) {
+		t.Fatalf("custom codex args = %v, want unchanged %v", cfg.Providers[0].Args, want)
 	}
 }
 
