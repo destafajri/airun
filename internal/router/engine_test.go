@@ -6,6 +6,7 @@ import (
 	"io"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/destafajri/smart-routing/internal/config"
 	"github.com/destafajri/smart-routing/internal/model"
@@ -87,5 +88,84 @@ func TestEnginePausesWhenAllProvidersFail(t *testing.T) {
 	}
 	if got.Status != model.TaskPaused {
 		t.Fatalf("status %s", got.Status)
+	}
+}
+
+
+func TestEngineUnknownFailureFailsClosedWithoutFailover(t *testing.T) {
+	cfg := config.Config{Providers: []config.ProviderConfig{
+		{Name: "one", Priority: 1, Command: "one"},
+		{Name: "two", Priority: 2, Command: "two"},
+	}}
+	if err := cfg.ValidateAndNormalize(); err != nil {
+		t.Fatal(err)
+	}
+	store := state.New(filepath.Join(t.TempDir(), "state.json"))
+	runner := &fakeRunner{results: map[string][]RunResult{
+		"one": {{Err: errors.New("tests failed: expected 2 got 3")}},
+		"two": {{Output: "must not run"}},
+	}}
+	eng := NewEngine(cfg, store, runner, EngineOptions{})
+	if err := store.UpsertTask(model.NewTask("unknown", "fix tests")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := eng.Execute(context.Background(), "unknown")
+	if err == nil {
+		t.Fatal("expected task-level failure")
+	}
+	if got.Status != model.TaskFailed {
+		t.Fatalf("status %s, want failed", got.Status)
+	}
+	if len(runner.calls) != 1 || runner.calls[0] != "one" {
+		t.Fatalf("unexpected provider calls: %v", runner.calls)
+	}
+}
+
+func TestEngineCancellationStopsDuringBackoff(t *testing.T) {
+	cfg := config.Config{Providers: []config.ProviderConfig{
+		{Name: "one", Priority: 1, Command: "one", MaxRetries: 1, RetryBackoffMillis: 30000},
+		{Name: "two", Priority: 2, Command: "two"},
+	}}
+	if err := cfg.ValidateAndNormalize(); err != nil {
+		t.Fatal(err)
+	}
+	store := state.New(filepath.Join(t.TempDir(), "state.json"))
+	if err := store.UpsertTask(model.NewTask("cancel", "task")); err != nil {
+		t.Fatal(err)
+	}
+	runner := &fakeRunner{results: map[string][]RunResult{
+		"one": {{Err: errors.New("service unavailable HTTP 503")}},
+		"two": {{Output: "must not run"}},
+	}}
+	sleepStarted := make(chan struct{})
+	eng := NewEngine(cfg, store, runner, EngineOptions{
+		Sleep: func(ctx context.Context, d time.Duration) error {
+			close(sleepStarted)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(d):
+				return nil
+			}
+		},
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		_, err := eng.Execute(ctx, "cancel")
+		result <- err
+	}()
+	<-sleepStarted
+	cancel()
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("error %v, want context canceled", err)
+		}
+		if len(runner.calls) != 1 {
+			t.Fatalf("provider calls %v, want one call", runner.calls)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("cancellation did not stop backoff promptly")
 	}
 }
