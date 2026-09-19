@@ -74,6 +74,10 @@ func WriteDefault(path string, force bool) error {
 }
 
 func Save(path string, cfg Config) error {
+	return saveWithReplace(path, cfg, replaceConfigFile)
+}
+
+func saveWithReplace(path string, cfg Config, replace func(tempPath, targetPath string) error) error {
 	if err := cfg.ValidateAndNormalize(); err != nil {
 		return err
 	}
@@ -81,10 +85,43 @@ func Save(path string, cfg Config) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(b, '\n'), 0o644)
+
+	f, err := os.CreateTemp(dir, ".airun-config-*")
+	if err != nil {
+		return err
+	}
+	tempPath := f.Name()
+	closed := false
+	defer func() {
+		if !closed {
+			_ = f.Close()
+		}
+		_ = os.Remove(tempPath)
+	}()
+
+	if err := f.Chmod(0o644); err != nil {
+		return err
+	}
+	if _, err := f.Write(append(b, '\n')); err != nil {
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		closed = true
+		return err
+	}
+	closed = true
+
+	if err := replace(tempPath, path); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (c *Config) ValidateAndNormalize() error {
