@@ -14,6 +14,8 @@ import (
 	"github.com/destafajri/smart-routing/internal/state"
 )
 
+var ErrUnsafeProviderTermination = errors.New("provider process tree could not be terminated")
+
 type RunResult struct {
 	Output string
 	Err    error
@@ -28,7 +30,7 @@ type EngineOptions struct {
 	Workdir string
 	Output  io.Writer
 	Log     io.Writer
-	Sleep   func(time.Duration)
+	Sleep   func(context.Context, time.Duration) error
 }
 
 type Engine struct {
@@ -49,7 +51,7 @@ func NewEngine(cfg config.Config, store *state.Store, runner Runner, opts Engine
 		opts.Log = io.Discard
 	}
 	if opts.Sleep == nil {
-		opts.Sleep = time.Sleep
+		opts.Sleep = sleepContext
 	}
 	return &Engine{cfg: cfg, store: store, runner: runner, opts: opts}
 }
@@ -74,30 +76,46 @@ func (e *Engine) Execute(ctx context.Context, taskID string) (model.Task, error)
 
 	var lastErr error
 	for _, p := range e.cfg.Providers {
-		select {
-		case <-ctx.Done():
-			task.Status = model.TaskPaused
-			task.LastError = ctx.Err().Error()
-			_ = e.store.UpsertTask(task)
-			return task, ctx.Err()
-		default:
+		if err := ctx.Err(); err != nil {
+			return e.pauseForCancellation(task, err)
 		}
 
 		if err := e.runner.Health(ctx, p, e.opts.Workdir); err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return e.pauseForCancellation(task, ctxErr)
+			}
+			if errors.Is(err, ErrUnsafeProviderTermination) {
+				task.Status = model.TaskFailed
+				task.ActiveProvider = p.Name
+				task.LastError = err.Error()
+				if persistErr := e.store.UpsertTask(task); persistErr != nil {
+					return task, errors.Join(err, persistErr)
+				}
+				return task, err
+			}
+
 			kind := FailureUnavailable
 			lastErr = fmt.Errorf("%s unavailable: %w", p.Name, err)
-			task.Attempts = append(task.Attempts, model.Attempt{Provider: p.Name, StartedAt: time.Now().UTC(), FinishedAt: time.Now().UTC(), FailureKind: string(kind), Error: lastErr.Error()})
+			now := time.Now().UTC()
+			task.Attempts = append(task.Attempts, model.Attempt{Provider: p.Name, StartedAt: now, FinishedAt: now, FailureKind: string(kind), Error: lastErr.Error()})
 			task.LastError = lastErr.Error()
-			_ = e.store.UpsertTask(task)
 			if !shouldFailover(p, kind) {
 				task.Status = model.TaskFailed
-				_ = e.store.UpsertTask(task)
+			}
+			if persistErr := e.store.UpsertTask(task); persistErr != nil {
+				return task, errors.Join(lastErr, persistErr)
+			}
+			if task.Status == model.TaskFailed {
 				return task, lastErr
 			}
 			continue
 		}
 
 		for attempt := 0; attempt <= p.MaxRetries; attempt++ {
+			if err := ctx.Err(); err != nil {
+				return e.pauseForCancellation(task, err)
+			}
+
 			task.Status = model.TaskRunning
 			task.ActiveProvider = p.Name
 			task.LastError = ""
@@ -122,25 +140,45 @@ func (e *Engine) Execute(ctx context.Context, taskID string) (model.Task, error)
 				return task, nil
 			}
 
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				task.LastOutput = truncate(res.Output, 16000)
+				task.Attempts = append(task.Attempts, model.Attempt{Provider: p.Name, StartedAt: started, FinishedAt: finished, FailureKind: "canceled", Error: ctxErr.Error(), Output: task.LastOutput})
+				return e.pauseForCancellation(task, ctxErr)
+			}
+
+			if errors.Is(res.Err, ErrUnsafeProviderTermination) {
+				task.Status = model.TaskFailed
+				task.LastError = res.Err.Error()
+				task.LastOutput = truncate(res.Output, 16000)
+				task.Attempts = append(task.Attempts, model.Attempt{Provider: p.Name, StartedAt: started, FinishedAt: finished, FailureKind: string(FailureUnknown), Error: res.Err.Error(), Output: task.LastOutput})
+				if err := e.store.UpsertTask(task); err != nil {
+					return task, errors.Join(res.Err, err)
+				}
+				return task, res.Err
+			}
+
 			failureText := res.Output + "\n" + res.Err.Error()
 			kind := ClassifyProviderFailure(failureText, customPatterns(p.ErrorPatterns))
 			lastErr = fmt.Errorf("%s failed (%s): %w", p.Name, kind, res.Err)
 			task.LastError = lastErr.Error()
 			task.LastOutput = truncate(res.Output, 16000)
-			task.Attempts = append(task.Attempts, model.Attempt{Provider: p.Name, StartedAt: started, FinishedAt: finished, FailureKind: string(kind), Error: lastErr.Error(), Output: truncate(res.Output, 16000)})
-			if err := e.store.UpsertTask(task); err != nil {
-				return task, err
-			}
+			task.Attempts = append(task.Attempts, model.Attempt{Provider: p.Name, StartedAt: started, FinishedAt: finished, FailureKind: string(kind), Error: lastErr.Error(), Output: task.LastOutput})
 
 			if !shouldFailover(p, kind) {
 				task.Status = model.TaskFailed
-				_ = e.store.UpsertTask(task)
+			}
+			if err := e.store.UpsertTask(task); err != nil {
+				return task, errors.Join(lastErr, err)
+			}
+			if task.Status == model.TaskFailed {
 				return task, lastErr
 			}
 			if attempt < p.MaxRetries && retrySameProvider(kind) {
 				d := backoff(p.RetryBackoffMillis, attempt)
 				e.eventf("[%s] retrying after %s (%s)\n", p.Name, d, kind)
-				e.opts.Sleep(d)
+				if err := e.sleep(ctx, d); err != nil {
+					return e.pauseForCancellation(task, err)
+				}
 				continue
 			}
 			break
@@ -149,14 +187,40 @@ func (e *Engine) Execute(ctx context.Context, taskID string) (model.Task, error)
 	}
 
 	task.Status = model.TaskPaused
+	task.ActiveProvider = ""
 	if lastErr == nil {
 		lastErr = errors.New("no provider available")
 	}
 	task.LastError = lastErr.Error()
 	if err := e.store.UpsertTask(task); err != nil {
-		return task, err
+		return task, errors.Join(lastErr, err)
 	}
 	return task, fmt.Errorf("all providers exhausted; task paused: %w", lastErr)
+}
+
+func (e *Engine) pauseForCancellation(task model.Task, cause error) (model.Task, error) {
+	task.Status = model.TaskPaused
+	task.ActiveProvider = ""
+	task.LastError = cause.Error()
+	if err := e.store.UpsertTask(task); err != nil {
+		return task, errors.Join(cause, err)
+	}
+	return task, cause
+}
+
+func (e *Engine) sleep(ctx context.Context, d time.Duration) error {
+	return e.opts.Sleep(ctx, d)
+}
+
+func sleepContext(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 func (e *Engine) eventf(format string, args ...any) {
@@ -208,7 +272,7 @@ func shouldFailover(p config.ProviderConfig, kind FailureKind) bool {
 
 func retrySameProvider(kind FailureKind) bool {
 	switch kind {
-	case FailureRateLimit, FailureTimeout, FailureOutage, FailureProvider:
+	case FailureRateLimit, FailureTimeout, FailureOutage:
 		return true
 	default:
 		return false
