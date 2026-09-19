@@ -1,6 +1,11 @@
 package config
 
-import (\n\t"errors"\n\t"os"\n\t"path/filepath"\n\t"testing"\n)
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestValidateSortsProvidersByPriority(t *testing.T) {
 	cfg := Config{Providers: []ProviderConfig{
