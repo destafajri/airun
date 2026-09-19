@@ -11,7 +11,7 @@ It is designed for coding-agent CLIs such as Claude Code, Codex CLI, Gemini CLI,
 - Any number of providers/models; no hardcoded provider limit.
 - Deterministic priority/fallback order.
 - Generic provider adapter: executable + arguments + prompt mode.
-- Detects quota, rate limit, timeout, outage, unavailable command, auth, configured provider failures, and unknown failures; unknown failures fail closed by default.
+- Detects quota, rate limit, timeout, outage, unavailable command, auth, configured provider failures, and unknown failures. Automatic classification uses the provider diagnostic/error channel rather than arbitrary task stdout; unknown failures fail closed by default.
 - Per-provider custom error patterns and failover policies.
 - Retries with exponential backoff before failover where appropriate.
 - Preserves task context across providers using the original task, previous attempts, and current Git working-tree summary.
@@ -331,7 +331,7 @@ Run:
 airun daemon
 ```
 
-The daemon reconciles orphaned `running` tasks after crashes/restarts, then checks queued/paused tasks every `poll_interval_seconds` and retries them. Duplicate execution is prevented by a per-task filesystem lock with stale-owner detection, so another live `airun` process cannot execute the same task at the same time.
+The daemon reconciles orphaned `running` tasks after crashes/restarts, then checks queued/paused tasks every `poll_interval_seconds` and retries them. Duplicate execution is prevented by OS-managed advisory file locks held on open handles. The OS releases those locks when a process exits, so recovery does not delete lock paths based on PID/staleness guesses.
 
 For a machine that should resume tasks continuously, run `airun daemon` under your normal process supervisor (systemd, launchd, Windows Task Scheduler, Docker, etc.). The project intentionally does not install a background service automatically.
 
@@ -363,7 +363,7 @@ For operations such as production deploys, database migrations, payments, publis
 - inspect state before replaying a dangerous operation;
 - do not assume failover is equivalent to a distributed transaction coordinator.
 
-`airun` also does not promise that error wording from every future provider release will match built-in patterns. Use `error_patterns` when a provider changes its messages. State writes use a temporary file plus rename; exact atomic replacement/durability guarantees remain platform/filesystem dependent.
+`airun` also does not promise that error wording from every future provider release will match built-in patterns. Use `error_patterns` when a provider changes its diagnostic messages. Provider stdout is treated as task output and is not used by default to infer infrastructure failures. State writes use a temporary file plus rename; exact atomic replacement/durability guarantees remain platform/filesystem dependent.
 
 On timeout/cancellation, provider processes are started in an OS-specific process group/tree and `airun` attempts to terminate the full tree before retry/failover. If tree termination itself cannot be guaranteed, routing fails closed instead of starting another provider.
 
