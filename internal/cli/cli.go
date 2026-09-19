@@ -131,6 +131,14 @@ func (a *App) runtime(configPath string) (*runtime, func(), error) {
 		return nil, func() {}, err
 	}
 	store := state.New(filepath.Join(stateDir, "state.json"))
+	recovered, err := store.ReconcileOrphanedTasks()
+	if err != nil {
+		_ = logFile.Close()
+		return nil, func() {}, fmt.Errorf("reconcile task state: %w", err)
+	}
+	if recovered > 0 {
+		fmt.Fprintf(logFile, "%s recovered %d orphaned task(s)\n", time.Now().UTC().Format(time.RFC3339), recovered)
+	}
 	runner := provider.NewExecRunner()
 	engine := router.NewEngine(cfg, store, runner, router.EngineOptions{Workdir: wd, Output: a.Out, Log: logFile})
 	return &runtime{cfg: cfg, store: store, runner: runner, engine: engine, workdir: wd}, func() { _ = logFile.Close() }, nil
@@ -253,6 +261,13 @@ func (a *App) daemon(ctx context.Context, rt *runtime) int {
 }
 
 func (a *App) resumeEligible(ctx context.Context, rt *runtime) error {
+	recovered, err := rt.store.ReconcileOrphanedTasks()
+	if err != nil {
+		return err
+	}
+	if recovered > 0 {
+		fmt.Fprintf(a.Out, "recovered %d orphaned task(s)\n", recovered)
+	}
 	tasks, err := rt.store.ListTasks(model.TaskPaused, model.TaskQueued)
 	if err != nil {
 		return err
