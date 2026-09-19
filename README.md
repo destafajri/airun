@@ -371,7 +371,7 @@ Runtime control files are outside the provider working tree by default and are n
 └── locks/          # OS advisory-lock files
 ```
 
-Typical automatic roots are `$XDG_STATE_HOME/airun` (or `~/.local/state/airun`) on Linux, `~/Library/Application Support/airun/state` on macOS, and the user's application-config area under `airun/state` on Windows. `AIRUN_STATE_HOME` overrides this root.
+Typical automatic roots are `$XDG_STATE_HOME/airun` (or `~/.local/state/airun`) on Linux, `~/Library/Application Support/airun/state` on macOS, and the user's application-config area under `airun/state` on Windows. On Linux, a relative `XDG_STATE_HOME` is ignored so automatic control state cannot accidentally become relative to the provider working tree. `AIRUN_STATE_HOME` explicitly overrides this root.
 
 `state.json` and logs may contain task/error text and should be treated as private local data. Do not store API keys in `config.json`. Provider subprocesses inherit your existing shell environment, so use the provider's normal login flow or environment variables/secret manager.
 
