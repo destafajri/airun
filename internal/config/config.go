@@ -70,7 +70,14 @@ func WriteDefault(path string, force bool) error {
 			return fmt.Errorf("config already exists: %s", path)
 		}
 	}
-	cfg := Default()
+	return Save(path, Default())
+}
+
+func Save(path string, cfg Config) error {
+	return saveWithReplace(path, cfg, replaceConfigFile)
+}
+
+func saveWithReplace(path string, cfg Config, replace func(tempPath, targetPath string) error) error {
 	if err := cfg.ValidateAndNormalize(); err != nil {
 		return err
 	}
@@ -78,10 +85,50 @@ func WriteDefault(path string, force bool) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(b, '\n'), 0o644)
+
+	mode := os.FileMode(0o644)
+	if info, statErr := os.Stat(path); statErr == nil {
+		mode = info.Mode().Perm()
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return statErr
+	}
+
+	f, err := os.CreateTemp(dir, ".airun-config-*")
+	if err != nil {
+		return err
+	}
+	tempPath := f.Name()
+	closed := false
+	defer func() {
+		if !closed {
+			_ = f.Close()
+		}
+		_ = os.Remove(tempPath)
+	}()
+
+	if err := f.Chmod(mode); err != nil {
+		return err
+	}
+	if _, err := f.Write(append(b, '\n')); err != nil {
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		closed = true
+		return err
+	}
+	closed = true
+
+	if err := replace(tempPath, path); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (c *Config) ValidateAndNormalize() error {

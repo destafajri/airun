@@ -20,6 +20,8 @@ It is designed for coding-agent CLIs such as Claude Code, Codex CLI, Gemini CLI,
 - Pauses unfinished tasks when all providers are exhausted.
 - `airun daemon` automatically retries paused tasks when providers become usable again.
 - Interactive REPL and one-shot CLI modes.
+- Interactive provider configuration with `airun setup` / `airun configure`: add, edit, remove, reprioritize, and save providers without editing JSON manually.
+- Startup warnings when a configured provider executable is not installed or not available on `PATH`.
 - Stores the runtime event log with the external per-project control state.
 
 ## How failover works
@@ -113,6 +115,49 @@ go build -o airun.exe ./cmd/airun
 # Move airun.exe to a directory that is on PATH.
 ```
 
+### Update / upgrade an existing installation
+
+If you originally installed `airun` with `go install`, upgrade to the latest published version with:
+
+```bash
+go install github.com/destafajri/smart-routing/cmd/airun@latest
+```
+
+Then verify the binary that your shell resolves:
+
+```bash
+airun version
+```
+
+If the version did not change, check which binary is being executed:
+
+macOS/Linux:
+
+```bash
+which airun
+```
+
+Windows PowerShell:
+
+```powershell
+Get-Command airun
+```
+
+Make sure that path points to the Go-installed binary (commonly `$(go env GOPATH)/bin/airun` on macOS/Linux or `%USERPROFILE%\\go\\bin\\airun.exe` on Windows), or replace the older copy that appears earlier on your `PATH`.
+
+If you installed from a cloned repository instead, update the source and rebuild:
+
+```bash
+cd /path/to/smart-routing
+git pull
+go test ./...
+go build -o airun ./cmd/airun
+```
+
+Then replace the previously installed binary with the newly built one using the same location you chose during installation.
+
+Your project configuration and external runtime state are not removed by replacing the `airun` executable.
+
 ## Quick start
 
 Go to the project/repository where you want AI agents to work:
@@ -133,6 +178,22 @@ Default priority:
 ```text
 Claude Code -> Codex CLI -> Gemini CLI
 ```
+
+To configure providers interactively instead of editing JSON:
+
+```bash
+airun setup
+```
+
+The setup menu lets you add, edit, remove, and reprioritize any number of providers. `airun configure` is an alias.
+
+When a configured executable is missing, normal `airun` commands print a warning such as:
+
+```text
+warning: provider "gemini" command "gemini" is not installed or not available in PATH; install it or run `airun setup` to update provider settings.
+```
+
+The warning is informational: routing/health checks still determine which configured providers can actually be used.
 
 Check providers:
 
@@ -173,6 +234,28 @@ Slash commands in interactive mode:
 ```
 
 ## Configuration
+
+### Interactive provider setup
+
+Run:
+
+```bash
+airun setup
+```
+
+The wizard works both for a new project and an existing config. Its menu supports:
+
+```text
+1) Add provider
+2) Edit provider
+3) Remove provider
+4) Save and exit
+5) Exit without saving
+```
+
+For each provider it prompts for the provider name, CLI command, arguments, prompt mode, priority, health-check arguments, timeout, retry count, and retry backoff. Known provider names (`claude`, `codex`, and `gemini`) receive sensible command/argument defaults; custom provider names remain fully configurable.
+
+Press Enter to keep the shown value. Enter `-` for **Arguments** or **Health-check arguments** to clear that list completely—for example, a `prompt_mode=stdin` provider can have zero CLI arguments and receive the prompt only on stdin. Arguments entered in the wizard are otherwise whitespace-separated. For unusual arguments that themselves contain spaces, edit the JSON array directly after setup.
 
 Default `.airun/config.json`:
 
@@ -319,6 +402,8 @@ An error not included in `failover_on` marks the task `failed` instead of silent
 ## CLI commands
 
 ```bash
+airun setup
+airun configure
 airun status
 airun active-provider
 airun queue
