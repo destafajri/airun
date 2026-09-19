@@ -212,7 +212,7 @@ The wizard works both for a new project and an existing config. Its menu support
 
 For each provider it prompts for the provider name, CLI command, arguments, prompt mode, priority, health-check arguments, timeout, retry count, and retry backoff. Known provider names (`claude`, `codex`, and `gemini`) receive sensible command/argument defaults; custom provider names remain fully configurable.
 
-Arguments entered in the wizard are whitespace-separated. For unusual arguments that themselves contain spaces, edit the JSON array directly after setup.
+Press Enter to keep the shown value. Enter `-` for **Arguments** or **Health-check arguments** to clear that list completely—for example, a `prompt_mode=stdin` provider can have zero CLI arguments and receive the prompt only on stdin. Arguments entered in the wizard are otherwise whitespace-separated. For unusual arguments that themselves contain spaces, edit the JSON array directly after setup.
 
 Default `.airun/config.json`:
 
