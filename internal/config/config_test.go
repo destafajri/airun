@@ -34,7 +34,6 @@ func TestValidateRejectsDuplicateProviderNames(t *testing.T) {
 	}
 }
 
-
 func TestDefaultFailoverIsLimitedToKnownInfrastructureFailures(t *testing.T) {
 	cfg := Config{Providers: []ProviderConfig{{Name: "one", Command: "one"}}}
 	if err := cfg.ValidateAndNormalize(); err != nil {
@@ -52,7 +51,6 @@ func TestDefaultFailoverIsLimitedToKnownInfrastructureFailures(t *testing.T) {
 	}
 }
 
-
 func TestDefaultUsesAutomaticExternalStateDir(t *testing.T) {
 	cfg := Default()
 	if err := cfg.ValidateAndNormalize(); err != nil {
@@ -63,6 +61,29 @@ func TestDefaultUsesAutomaticExternalStateDir(t *testing.T) {
 	}
 }
 
+func TestDefaultCodexSkipsGitRepoCheck(t *testing.T) {
+	cfg := Default()
+	var codex *ProviderConfig
+	for i := range cfg.Providers {
+		if cfg.Providers[i].Name == "codex" {
+			codex = &cfg.Providers[i]
+			break
+		}
+	}
+	if codex == nil {
+		t.Fatal("default codex provider not found")
+	}
+
+	want := []string{"exec", "--skip-git-repo-check", "{{prompt}}"}
+	if len(codex.Args) != len(want) {
+		t.Fatalf("codex args = %v, want %v", codex.Args, want)
+	}
+	for i := range want {
+		if codex.Args[i] != want[i] {
+			t.Fatalf("codex args = %v, want %v", codex.Args, want)
+		}
+	}
+}
 
 func TestSavePreservesExistingConfigWhenReplacementFails(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
