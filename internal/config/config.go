@@ -33,7 +33,6 @@ type Config struct {
 
 func Default() Config {
 	return Config{
-		StateDir:            ".airun",
 		PollIntervalSeconds: 60,
 		Providers: []ProviderConfig{
 			{Name: "claude", Priority: 10, Command: "claude", Args: []string{"-p", "{{prompt}}"}, TimeoutSeconds: 1800, MaxRetries: 1, RetryBackoffMillis: 1500, HealthArgs: []string{"--version"}},
@@ -89,9 +88,7 @@ func (c *Config) ValidateAndNormalize() error {
 	if len(c.Providers) == 0 {
 		return errors.New("at least one provider is required")
 	}
-	if strings.TrimSpace(c.StateDir) == "" {
-		c.StateDir = ".airun"
-	}
+	c.StateDir = strings.TrimSpace(c.StateDir)
 	if c.PollIntervalSeconds <= 0 {
 		c.PollIntervalSeconds = 60
 	}
