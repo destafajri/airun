@@ -97,7 +97,7 @@ func (c *Config) ValidateAndNormalize() error {
 	}
 
 	seen := map[string]struct{}{}
-	defaultFailover := []string{"quota", "rate_limit", "timeout", "outage", "unavailable", "provider", "auth"}
+	defaultFailover := []string{"quota", "rate_limit", "timeout", "outage", "unavailable"}
 	for i := range c.Providers {
 		p := &c.Providers[i]
 		p.Name = strings.TrimSpace(p.Name)
