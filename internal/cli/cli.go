@@ -11,7 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
+	goruntime "runtime"
 	"strings"
 	"time"
 
@@ -413,7 +413,7 @@ func resolveStateDir(cfg config.Config, workdir string) (string, error) {
 		return "", fmt.Errorf("canonicalize project path: %w", err)
 	}
 	canonical = filepath.Clean(canonical)
-	if runtime.GOOS == "windows" {
+	if goruntime.GOOS == "windows" {
 		canonical = strings.ToLower(canonical)
 	}
 
@@ -435,7 +435,7 @@ func defaultStateHome() (string, error) {
 		return filepath.Clean(abs), nil
 	}
 
-	switch runtime.GOOS {
+	switch goruntime.GOOS {
 	case "linux":
 		if xdg := strings.TrimSpace(os.Getenv("XDG_STATE_HOME")); xdg != "" {
 			return filepath.Join(xdg, "airun"), nil
