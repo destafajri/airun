@@ -20,6 +20,8 @@ It is designed for coding-agent CLIs such as Claude Code, Codex CLI, Gemini CLI,
 - Pauses unfinished tasks when all providers are exhausted.
 - `airun daemon` automatically retries paused tasks when providers become usable again.
 - Interactive REPL and one-shot CLI modes.
+- Interactive provider configuration with `airun setup` / `airun configure`: add, edit, remove, reprioritize, and save providers without editing JSON manually.
+- Startup warnings when a configured provider executable is not installed or not available on `PATH`.
 - Stores the runtime event log with the external per-project control state.
 
 ## How failover works
@@ -134,6 +136,22 @@ Default priority:
 Claude Code -> Codex CLI -> Gemini CLI
 ```
 
+To configure providers interactively instead of editing JSON:
+
+```bash
+airun setup
+```
+
+The setup menu lets you add, edit, remove, and reprioritize any number of providers. `airun configure` is an alias.
+
+When a configured executable is missing, normal `airun` commands print a warning such as:
+
+```text
+warning: provider "gemini" command "gemini" is not installed or not available in PATH; install it or run `airun setup` to update provider settings.
+```
+
+The warning is informational: routing/health checks still determine which configured providers can actually be used.
+
 Check providers:
 
 ```bash
@@ -173,6 +191,28 @@ Slash commands in interactive mode:
 ```
 
 ## Configuration
+
+### Interactive provider setup
+
+Run:
+
+```bash
+airun setup
+```
+
+The wizard works both for a new project and an existing config. Its menu supports:
+
+```text
+1) Add provider
+2) Edit provider
+3) Remove provider
+4) Save and exit
+5) Exit without saving
+```
+
+For each provider it prompts for the provider name, CLI command, arguments, prompt mode, priority, health-check arguments, timeout, retry count, and retry backoff. Known provider names (`claude`, `codex`, and `gemini`) receive sensible command/argument defaults; custom provider names remain fully configurable.
+
+Arguments entered in the wizard are whitespace-separated. For unusual arguments that themselves contain spaces, edit the JSON array directly after setup.
 
 Default `.airun/config.json`:
 
@@ -319,6 +359,8 @@ An error not included in `failover_on` marks the task `failed` instead of silent
 ## CLI commands
 
 ```bash
+airun setup
+airun configure
 airun status
 airun active-provider
 airun queue
