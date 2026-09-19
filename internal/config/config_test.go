@@ -46,3 +46,14 @@ func TestDefaultFailoverIsLimitedToKnownInfrastructureFailures(t *testing.T) {
 		}
 	}
 }
+
+
+func TestDefaultUsesAutomaticExternalStateDir(t *testing.T) {
+	cfg := Default()
+	if err := cfg.ValidateAndNormalize(); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.StateDir != "" {
+		t.Fatalf("default state_dir = %q, want automatic external state location", cfg.StateDir)
+	}
+}
