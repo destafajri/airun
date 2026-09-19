@@ -3,6 +3,7 @@ package provider
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -28,11 +29,14 @@ func (r *ExecRunner) Health(ctx context.Context, p config.ProviderConfig, workdi
 	}
 	hctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(hctx, p.Command, p.HealthArgs...)
+	cmd := exec.Command(p.Command, p.HealthArgs...)
 	cmd.Dir = workdir
 	cmd.Env = mergedEnv(p.Env)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("health check: %w: %s", err, strings.TrimSpace(string(out)))
+	var output bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+	if err := runManaged(hctx, cmd); err != nil {
+		return fmt.Errorf("health check: %w: %s", err, strings.TrimSpace(output.String()))
 	}
 	return nil
 }
@@ -43,9 +47,7 @@ func (r *ExecRunner) Run(ctx context.Context, p config.ProviderConfig, prompt, w
 	defer cancel()
 
 	args := append([]string(nil), p.Args...)
-	if p.PromptMode == "stdin" {
-		// prompt is sent below through stdin
-	} else {
+	if p.PromptMode != "stdin" {
 		replaced := false
 		for i := range args {
 			if strings.Contains(args[i], "{{prompt}}") {
@@ -58,7 +60,7 @@ func (r *ExecRunner) Run(ctx context.Context, p config.ProviderConfig, prompt, w
 		}
 	}
 
-	cmd := exec.CommandContext(rctx, p.Command, args...)
+	cmd := exec.Command(p.Command, args...)
 	cmd.Dir = workdir
 	cmd.Env = mergedEnv(p.Env)
 	if p.PromptMode == "stdin" {
@@ -68,15 +70,46 @@ func (r *ExecRunner) Run(ctx context.Context, p config.ProviderConfig, prompt, w
 	cw := &captureWriter{out: out}
 	cmd.Stdout = cw
 	cmd.Stderr = cw
-	err := cmd.Run()
+	err := runManaged(rctx, cmd)
 	output := cw.String()
-	if rctx.Err() == context.DeadlineExceeded {
-		return router.RunResult{Output: output, Err: fmt.Errorf("request timed out after %s: %w", timeout, rctx.Err())}
+	if errors.Is(err, router.ErrUnsafeProviderTermination) {
+		return router.RunResult{Output: output, Err: err}
+	}
+	if errors.Is(rctx.Err(), context.DeadlineExceeded) {
+		return router.RunResult{Output: output, Err: fmt.Errorf("request timed out after %s: %w", timeout, context.DeadlineExceeded)}
+	}
+	if errors.Is(rctx.Err(), context.Canceled) {
+		return router.RunResult{Output: output, Err: context.Canceled}
 	}
 	if err != nil {
 		return router.RunResult{Output: output, Err: err}
 	}
 	return router.RunResult{Output: output}
+}
+
+func runManaged(ctx context.Context, cmd *exec.Cmd) error {
+	prepareCommand(cmd)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	waitCh := make(chan error, 1)
+	go func() { waitCh <- cmd.Wait() }()
+
+	select {
+	case err := <-waitCh:
+		return err
+	case <-ctx.Done():
+		select {
+		case err := <-waitCh:
+			return err
+		default:
+		}
+		if err := terminateProcessTree(cmd); err != nil {
+			return fmt.Errorf("%w: %v", router.ErrUnsafeProviderTermination, err)
+		}
+		<-waitCh
+		return ctx.Err()
+	}
 }
 
 type captureWriter struct {
