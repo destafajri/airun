@@ -23,7 +23,7 @@ import (
 	"github.com/destafajri/airun/internal/state"
 )
 
-const Version = "0.2.1"
+const Version = "0.2.2"
 
 type App struct {
 	In       io.Reader
