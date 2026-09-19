@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -126,5 +127,60 @@ func TestReconcileLeavesLiveRunningTaskAlone(t *testing.T) {
 	}
 	if got.Status != model.TaskRunning {
 		t.Fatalf("status %s, want running", got.Status)
+	}
+}
+
+
+func TestConcurrentStaleTaskLockReclaimHasSingleOwner(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	taskID := "stale-race"
+	s := New(statePath)
+
+	cmd := exec.Command(os.Args[0], "-test.run=TestCrashLockHelper")
+	cmd.Env = append(os.Environ(),
+		"AIRUN_TEST_CRASH_LOCK=1",
+		"AIRUN_TEST_STATE_PATH="+statePath,
+		"AIRUN_TEST_TASK_ID="+taskID,
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("crash helper: %v: %s", err, out)
+	}
+
+	const contenders = 64
+	start := make(chan struct{})
+	releaseWinner := make(chan struct{})
+	results := make(chan bool, contenders)
+	var wg sync.WaitGroup
+	wg.Add(contenders)
+	for i := 0; i < contenders; i++ {
+		go func() {
+			defer wg.Done()
+			<-start
+			release, err := s.AcquireTaskLock(taskID)
+			if err != nil {
+				results <- false
+				return
+			}
+			results <- true
+			<-releaseWinner
+			release()
+		}()
+	}
+	close(start)
+	for i := 0; i < contenders; i++ {
+		<-results
+	}
+	close(releaseWinner)
+	wg.Wait()
+	close(results)
+
+	successes := 0
+	for ok := range results {
+		if ok {
+			successes++
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("successful concurrent lock owners = %d, want 1", successes)
 	}
 }
