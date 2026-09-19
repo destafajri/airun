@@ -68,23 +68,25 @@ func (r *ExecRunner) Run(ctx context.Context, p config.ProviderConfig, prompt, w
 	}
 
 	cw := &captureWriter{out: out}
+	diagnostic := &captureWriter{}
 	cmd.Stdout = cw
-	cmd.Stderr = cw
+	cmd.Stderr = io.MultiWriter(cw, diagnostic)
 	err := runManaged(rctx, cmd)
 	output := cw.String()
+	diag := diagnostic.String()
 	if errors.Is(err, router.ErrUnsafeProviderTermination) {
-		return router.RunResult{Output: output, Err: err}
+		return router.RunResult{Output: output, Diagnostic: diag, Err: err}
 	}
 	if errors.Is(rctx.Err(), context.DeadlineExceeded) {
-		return router.RunResult{Output: output, Err: fmt.Errorf("request timed out after %s: %w", timeout, context.DeadlineExceeded)}
+		return router.RunResult{Output: output, Diagnostic: diag, Err: fmt.Errorf("request timed out after %s: %w", timeout, context.DeadlineExceeded)}
 	}
 	if errors.Is(rctx.Err(), context.Canceled) {
-		return router.RunResult{Output: output, Err: context.Canceled}
+		return router.RunResult{Output: output, Diagnostic: diag, Err: context.Canceled}
 	}
 	if err != nil {
-		return router.RunResult{Output: output, Err: err}
+		return router.RunResult{Output: output, Diagnostic: diag, Err: err}
 	}
-	return router.RunResult{Output: output}
+	return router.RunResult{Output: output, Diagnostic: diag}
 }
 
 func runManaged(ctx context.Context, cmd *exec.Cmd) error {
