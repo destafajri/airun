@@ -12,6 +12,7 @@ const (
 	FailureUnavailable FailureKind = "unavailable"
 	FailureAuth        FailureKind = "auth"
 	FailureProvider    FailureKind = "provider"
+	FailureUnknown     FailureKind = "unknown"
 )
 
 var builtinPatterns = map[FailureKind][]string{
@@ -25,7 +26,7 @@ var builtinPatterns = map[FailureKind][]string{
 
 func ClassifyProviderFailure(text string, custom map[FailureKind][]string) FailureKind {
 	lower := strings.ToLower(text)
-	order := []FailureKind{FailureQuota, FailureRateLimit, FailureTimeout, FailureOutage, FailureUnavailable, FailureAuth}
+	order := []FailureKind{FailureQuota, FailureRateLimit, FailureTimeout, FailureOutage, FailureUnavailable, FailureAuth, FailureProvider}
 	for _, kind := range order {
 		for _, pattern := range custom[kind] {
 			if strings.Contains(lower, strings.ToLower(pattern)) {
@@ -40,5 +41,5 @@ func ClassifyProviderFailure(text string, custom map[FailureKind][]string) Failu
 			}
 		}
 	}
-	return FailureProvider
+	return FailureUnknown
 }
